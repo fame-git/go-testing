@@ -1,9 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"tester/adapters"
+	"tester/core"
 
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -16,45 +18,26 @@ const (
 	dbname   = "mydatabase" // as defined in docker-compose.yml
 )
 
-type User struct {
-	gorm.Model
-	Fullname string
-	Email    string `gorm:"unique"`
-	Age      int
-}
+func main() {
+	app := fiber.New()
 
-// InitializeDB initializes the database and automigrates the User model.
-func InitializeDB() *gorm.DB {
-	// Configure your PostgreSQL database details here
 	dsn := fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
+	// Initialize the database connection
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		panic("failed to connect to database")
-	}
-	db.AutoMigrate(&User{})
-	return db
-}
-
-// AddUser adds a new user to the database.
-func AddUser(db *gorm.DB, fullname, email string, age int) error {
-	user := User{Fullname: fullname, Email: email, Age: age}
-
-	// Check if email already exists
-	var count int64
-	db.Model(&User{}).Where("email = ?", email).Count(&count)
-	if count > 0 {
-		return errors.New("email already exists")
+		panic("failed to connect database")
 	}
 
-	// Save the new user
-	result := db.Create(&user)
-	return result.Error
-}
+	db.AutoMigrate(&core.Order{})
 
-func main() {
-	db := InitializeDB()
-	// Your application code
-	AddUser(db, "John Doe", "jane.doe@example.com", 30)
+	orderRepo := adapters.NewGormOrderRepository(db)
+	orderService := core.NewOrderService(orderRepo)
+	orderHandler := adapters.NewHttpOrderHandler(orderService)
+
+	app.Post("/order", orderHandler.CreateOrder)
+	// Migrate the schema
+
+	app.Listen(":8000")
 }
